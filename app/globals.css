@@ -600,35 +600,46 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .folder-tree-search button { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; }
 .folder-tree-expand { flex: 0 0 auto; border: 0; background: none; color: var(--blue); font-size: 12px; font-weight: 800; }
 .folder-tree-expand:hover { text-decoration: underline; }
-.folder-tree, .folder-tree ul { margin: 0; padding: 0; list-style: none; }
-.folder-tree { display: grid; gap: 8px; }
-.folder-tree-parent { border: 1px solid var(--line); border-radius: 10px; background: white; overflow: hidden; }
-.folder-tree-parent > .folder-tree-row { padding: 9px 10px 9px 6px; }
-.folder-tree-parent[aria-expanded="true"] > .folder-tree-row { border-bottom: 1px solid #edf1f5; background: #fbfcfe; }
-.folder-tree-row { display: flex; align-items: center; gap: 8px; min-height: 36px; }
-.folder-tree-chevron, .folder-tree-chevron-spacer { flex: 0 0 26px; width: 26px; height: 26px; }
-.folder-tree-chevron { display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); }
-.folder-tree-chevron:hover:not(:disabled) { background: #edf2f7; color: var(--ink); }
-.folder-tree-chevron svg { transition: transform .15s ease; }
-.folder-tree-chevron.open svg { transform: rotate(90deg); }
-.folder-tree-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; background: #e3f3fb; color: #079bd7; }
-.folder-tree-icon.sub { width: 22px; height: 22px; border-radius: 6px; background: #f0f3f7; color: #8798a9; }
-.folder-tree-icon.sub svg { width: 13px; height: 13px; }
-.folder-tree-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 13px; font-weight: 800; }
-.folder-tree-name mark { border-radius: 3px; background: #ffe59a; color: inherit; }
-.folder-tree-count { padding: 3px 8px; border-radius: 999px; background: #eef2f6; color: #4f6275; font-size: 11px; font-weight: 800; white-space: nowrap; }
-.folder-tree-remove { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: none; color: #8a99a8; font-size: 17px; opacity: 0; transition: opacity .12s; }
-.folder-tree-row:hover .folder-tree-remove, .folder-tree-remove:focus-visible { opacity: 1; }
-.folder-tree-remove:hover { background: var(--red-soft); color: var(--red); }
-@media (hover: none) { .folder-tree-remove { opacity: 1; } }
-/* Sub-tree: vertical spine + elbow connectors, last child cuts the spine */
-.folder-tree-parent > ul { padding: 4px 12px 8px 0; }
-.folder-tree-child { position: relative; padding-left: 58px; }
-.folder-tree-child::before { content: ""; position: absolute; left: 33px; top: 0; bottom: 0; width: 1px; background: #cdd9e5; }
-.folder-tree-child:last-child::before { bottom: auto; height: 50%; }
-.folder-tree-child::after { content: ""; position: absolute; left: 33px; top: 50%; width: 18px; height: 1px; background: #cdd9e5; }
-.folder-tree-child .folder-tree-row { min-height: 34px; }
-.folder-tree-child .folder-tree-name { color: #34475b; font-weight: 700; }
+.ftree, .ftree ul, .ftree-results ul { margin: 0; padding: 0; list-style: none; }
+.ftree { border: 1px solid var(--line); border-radius: 10px; background: white; overflow: hidden; }
+.ftree-item.depth-0 + .ftree-item.depth-0 { border-top: 1px solid #edf1f5; }
+.ftree-row { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px 0 8px; border-radius: 6px; }
+.ftree-item.depth-0 > .ftree-row { min-height: 46px; }
+.ftree-row:hover { background: #f7fafd; }
+.ftree-chevron { flex: 0 0 22px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: none; color: #6b7d8f; }
+button.ftree-chevron:hover { background: #e7eef5; color: var(--ink); }
+.ftree-chevron svg { transition: transform .15s ease; }
+.ftree-chevron.open svg { transform: rotate(90deg); }
+.ftree-icon { flex: 0 0 24px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; background: #e3f3fb; color: #079bd7; }
+.ftree-icon svg { width: 14px; height: 14px; }
+.ftree-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 13px; font-weight: 700; }
+.ftree-meta { flex: 0 0 auto; color: #7a8b9c; font-size: 11px; font-weight: 700; }
+.ftree-remove { flex: 0 0 24px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%; background: none; color: #8a99a8; font-size: 16px; opacity: 0; transition: opacity .12s; }
+.ftree-row:hover .ftree-remove, .ftree-remove:focus-visible { opacity: 1; }
+.ftree-remove:hover { background: var(--red-soft); color: var(--red); }
+@media (hover: none) { .ftree-remove { opacity: 1; } }
+/* Nested levels: 20px indent, smaller rows, plain text weight. The main folder is the only bold row. */
+.ftree .ftree-group { margin: 0 0 4px 19px; padding-left: 8px; border-left: 1px solid #e3eaf1; }
+.ftree-item.depth-0 > .ftree-row .ftree-name { font-weight: 800; }
+.ftree-item.nested > .ftree-row { min-height: 32px; }
+.ftree-item.nested .ftree-name { font-weight: 600; color: #2b3f54; }
+.ftree-item.nested .ftree-icon { flex-basis: 20px; width: 20px; height: 20px; background: none; }
+.ftree-item.nested .ftree-icon svg { width: 15px; height: 15px; }
+.ftree-show-more { margin: 2px 0 4px 34px; padding: 4px 6px; border: 0; border-radius: 5px; background: none; color: var(--blue); font-size: 12px; font-weight: 800; }
+.ftree-show-more:hover { background: #eef5fb; }
+@keyframes ftree-flash { 0%, 40% { background: #fff1bf; box-shadow: 0 0 0 2px #f3cf5c; } 100% { background: transparent; box-shadow: none; } }
+.ftree-row.flash { animation: ftree-flash 1.6s ease-out; }
+.ftree-results { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.ftree-results-count { margin: 0; padding: 8px 12px; border-bottom: 1px solid #edf1f5; background: #f7fafd; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.ftree-results li + li { border-top: 1px solid #edf1f5; }
+.ftree-results button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; background: white; text-align: left; }
+.ftree-results button:hover { background: #f7fafd; }
+.ftree-result-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.ftree-result-text strong { color: var(--ink); font-size: 13px; }
+.ftree-result-text small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.ftree-result-text mark { border-radius: 3px; background: #ffe59a; color: inherit; }
+.ftree-result-go { color: var(--blue); font-size: 11px; font-weight: 800; opacity: 0; }
+.ftree-results button:hover .ftree-result-go, .ftree-results button:focus-visible .ftree-result-go { opacity: 1; }
 /* Folder scope modal still scrolls, but without a visible scrollbar */
 .modal:has(.folder-tree-panel) { scrollbar-width: none; }
 .modal:has(.folder-tree-panel)::-webkit-scrollbar { display: none; }

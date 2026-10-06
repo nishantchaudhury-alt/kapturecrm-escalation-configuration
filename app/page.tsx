@@ -136,45 +136,123 @@ const FOLDER_OPTIONS = [
   { group: "Regional teams", items: ["India", "Middle East", "South-East Asia"] },
 ];
 
-const SUBFOLDERS: Record<string, string[]> = {
-  "Whats app": ["Orders", "Refunds", "Delivery issues"],
-  "Call": ["Inbound", "Outbound", "Missed calls"],
-  "Complaints": ["Escalated", "Billing disputes"],
-  "Chat": ["Pre-sales", "Support"],
-  "Billing": ["Invoices", "Refund requests", "Payment failures"],
-  "India": ["North", "South", "West", "East"],
+type FolderNode = { name: string; children: FolderNode[] };
+const node = (name: string, ...children: FolderNode[]): FolderNode => ({ name, children });
+const leaves = (...names: string[]) => names.map((name) => node(name));
+// Sub-folders can nest to any depth.
+const SUBFOLDERS: Record<string, FolderNode[]> = {
+  "Whats app": [node("Orders", ...leaves("Order status", "Cancellations")), node("Refunds"), node("Delivery issues", node("Delayed"), node("Damaged", ...leaves("Packaging", "Product")))],
+  "Call": [node("Inbound", ...leaves("Sales", "Support")), node("Outbound"), node("Missed calls")],
+  "Complaints": [node("Escalated", ...leaves("Level 1", "Level 2")), node("Billing disputes")],
+  "Chat": leaves("Pre-sales", "Support"),
+  "Billing": [node("Invoices"), node("Refund requests"), node("Payment failures", ...leaves("Card", "UPI"))],
+  "India": [node("North", ...leaves("Delhi", "Punjab")), node("South", ...leaves("Bengaluru", "Chennai")), node("West"), node("East")],
 };
+const countDescendants = (nodes: FolderNode[]): number => nodes.reduce((total, child) => total + 1 + countDescendants(child.children), 0);
+const subfolderCount = (folder: string) => countDescendants(SUBFOLDERS[folder] ?? []);
+function collectExpandablePaths(nodes: FolderNode[], prefix: string, into: string[] = []) {
+  for (const child of nodes) {
+    if (!child.children.length) continue;
+    const path = `${prefix}/${child.name}`;
+    into.push(path);
+    collectExpandablePaths(child.children, path, into);
+  }
+  return into;
+}
 const SUMMARY_FOLDER_LIMIT = 3;
-const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const plural = (count: number, word: string, many = `${word}s`) => `${count} ${count === 1 ? word : many}`;
 const folderScopeSummary = (folders: string[]) => {
-  const subfolders = folders.reduce((total, folder) => total + (SUBFOLDERS[folder]?.length ?? 0), 0);
+  const subfolders = folders.reduce((total, folder) => total + subfolderCount(folder), 0);
   return subfolders ? `${plural(folders.length, "folder")} · ${plural(subfolders, "sub-folder")}` : plural(folders.length, "folder");
 };
 
 const FolderIcon = ({ open = false }: { open?: boolean }) => <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="currentColor" d={open ? "M2 5.5A1.5 1.5 0 0 1 3.5 4h4l1.6 1.6H16A1.5 1.5 0 0 1 17.5 7v1H6.2a1.5 1.5 0 0 0-1.4 1L2.6 15.2A1.5 1.5 0 0 1 2 14V5.5Zm2.9 4.2A1 1 0 0 1 5.8 9h12.4a.8.8 0 0 1 .8 1l-1.8 5.3a1 1 0 0 1-1 .7H3.6a.6.6 0 0 1-.6-.8l1.9-5.5Z" : "M2 5.5A1.5 1.5 0 0 1 3.5 4h4l1.6 1.6H16.5A1.5 1.5 0 0 1 18 7.1v7.4a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 2 14.5v-9Z"} /></svg>;
+
+const Chevron = () => <svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" d="m7 4 6 6-6 6" /></svg>;
+const LEAF_CHIP_LIMIT = 8; // children shown per level before "Show N more"
+type FolderMatch = { name: string; ancestors: string[]; path: string };
+function findFolderMatches(nodes: FolderNode[], q: string, ancestors: string[], into: FolderMatch[] = []) {
+  for (const child of nodes) {
+    const trail = [...ancestors, child.name];
+    if (child.name.toLowerCase().includes(q)) into.push({ name: child.name, ancestors, path: trail.join("/") });
+    findFolderMatches(child.children, q, trail, into);
+  }
+  return into;
+}
+
+type TreeContext = {
+  expanded: Set<string>;
+  showAllLeaves: Set<string>;
+  flashPath: string | null;
+  toggle: (set: "expanded" | "showAllLeaves", path: string) => void;
+  onRemove: (folder: string) => void;
+};
+
+function FolderTreeNode({ name, nodes, path, depth, ctx }: { name: string; nodes: FolderNode[]; path: string; depth: number; ctx: TreeContext }) {
+  const open = nodes.length > 0 && ctx.expanded.has(path);
+  const total = countDescendants(nodes);
+  const showAll = ctx.showAllLeaves.has(path);
+  const shown = showAll ? nodes : nodes.slice(0, LEAF_CHIP_LIMIT);
+  const groupId = `tree-group-${path.replace(/\W+/g, "-").toLowerCase()}`;
+  return <li role="treeitem" aria-selected="true" aria-expanded={nodes.length ? open : undefined} aria-level={depth + 1} className={`ftree-item ${depth === 0 ? "depth-0" : "nested"}`}>
+    <div className={`ftree-row ${ctx.flashPath === path ? "flash" : ""}`} data-path={path}>
+      {nodes.length ? <button type="button" className={`ftree-chevron ${open ? "open" : ""}`} aria-label={`${open ? "Collapse" : "Expand"} ${name}`} aria-controls={groupId} onClick={() => ctx.toggle("expanded", path)}><Chevron /></button> : <span className="ftree-chevron" aria-hidden="true" />}
+      <span className="ftree-icon"><FolderIcon open={open} /></span>
+      <span className="ftree-name">{name}</span>
+      {total > 0 && <span className="ftree-meta">{plural(total, "sub-folder")}</span>}
+      {depth === 0 && <button type="button" className="ftree-remove" aria-label={`Remove ${name}`} onClick={() => ctx.onRemove(name)}>×</button>}
+    </div>
+    {open && <ul role="group" id={groupId} className="ftree-group">
+      {shown.map((child) => <FolderTreeNode key={child.name} name={child.name} nodes={child.children} path={`${path}/${child.name}`} depth={depth + 1} ctx={ctx} />)}
+      {nodes.length > LEAF_CHIP_LIMIT && <li role="none"><button type="button" className="ftree-show-more" onClick={() => ctx.toggle("showAllLeaves", path)}>{showAll ? "Show fewer" : `Show ${nodes.length - LEAF_CHIP_LIMIT} more`}</button></li>}
+    </ul>}
+  </li>;
+}
 
 function FolderTree({ folders, onRemove }: {
   folders: string[];
   onRemove: (folder: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showAllLeaves, setShowAllLeaves] = useState<Set<string>>(new Set());
+  const [flashPath, setFlashPath] = useState<string | null>(null);
   const q = query.trim().toLowerCase();
-  const rows = folders.map((folder) => {
-    const children = SUBFOLDERS[folder] ?? [];
-    const parentMatch = !q || folder.toLowerCase().includes(q);
-    const matchedChildren = parentMatch ? children : children.filter((child) => child.toLowerCase().includes(q));
-    return { folder, children, visibleChildren: matchedChildren, visible: parentMatch || matchedChildren.length > 0 };
-  }).filter((row) => row.visible);
-  const expandable = folders.filter((folder) => SUBFOLDERS[folder]?.length);
-  const allCollapsed = expandable.length > 0 && expandable.every((folder) => collapsed.has(folder));
-  const toggleCollapsed = (folder: string) => setCollapsed((current) => {
-    const next = new Set(current);
-    if (next.has(folder)) next.delete(folder); else next.add(folder);
-    return next;
-  });
+  const expandable = folders.flatMap((folder) => SUBFOLDERS[folder]?.length ? [folder, ...collectExpandablePaths(SUBFOLDERS[folder], folder)] : []);
+  const allExpanded = expandable.length > 0 && expandable.every((path) => expanded.has(path));
+  const matches = q ? folders.flatMap((folder) => [
+    ...(folder.toLowerCase().includes(q) ? [{ name: folder, ancestors: [], path: folder }] : []),
+    ...findFolderMatches(SUBFOLDERS[folder] ?? [], q, [folder]),
+  ]) : [];
+
+  const ctx: TreeContext = {
+    expanded, showAllLeaves, flashPath, onRemove,
+    toggle: (set, path) => (set === "expanded" ? setExpanded : setShowAllLeaves)((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path); else next.add(path);
+      return next;
+    }),
+  };
+
+  /** Leave search, open every ancestor of the match, then scroll to it and flash it. */
+  function reveal(match: FolderMatch) {
+    setQuery("");
+    setExpanded((current) => {
+      const next = new Set(current);
+      match.ancestors.forEach((_, index) => next.add(match.ancestors.slice(0, index + 1).join("/")));
+      return next;
+    });
+    const parentPath = match.ancestors.join("/");
+    const siblings = match.ancestors.length ? (match.ancestors.slice(1).reduce<FolderNode[]>((nodes, name) => nodes.find((n) => n.name === name)?.children ?? [], SUBFOLDERS[match.ancestors[0]] ?? [])) : [];
+    if (siblings.findIndex((n) => n.name === match.name) >= LEAF_CHIP_LIMIT) setShowAllLeaves((current) => new Set(current).add(parentPath));
+    setFlashPath(match.path);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+      document.querySelector(`[data-path="${CSS.escape(match.path)}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }));
+    window.setTimeout(() => setFlashPath(null), 1600);
+  }
+
   const highlight = (text: string) => {
-    if (!q) return text;
     const index = text.toLowerCase().indexOf(q);
     if (index < 0) return text;
     return <>{text.slice(0, index)}<mark>{text.slice(index, index + q.length)}</mark>{text.slice(index + q.length)}</>;
@@ -183,31 +261,19 @@ function FolderTree({ folders, onRemove }: {
   return <div className="folder-tree-panel">
     <div className="folder-tree-toolbar">
       <label className="folder-tree-search"><span className="sr-only">Search folders and sub-folders</span><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="m14 14 4 4M8.5 15a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Z" /></svg><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search folders and sub-folders" />{query && <button type="button" aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
-      {expandable.length > 0 && !q && <button type="button" className="folder-tree-expand" onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(expandable))}>{allCollapsed ? "Expand all" : "Collapse all"}</button>}
+      {expandable.length > 0 && !q && <button type="button" className="folder-tree-expand" onClick={() => setExpanded(allExpanded ? new Set() : new Set(expandable))}>{allExpanded ? "Collapse all" : "Expand all"}</button>}
     </div>
-    {rows.length ? <ul className="folder-tree" role="tree" aria-label="Selected folders">
-      {rows.map(({ folder, children, visibleChildren }) => {
-        const isOpen = !!visibleChildren.length && (q ? true : !collapsed.has(folder));
-        const groupId = `tree-group-${folder.replace(/\W+/g, "-").toLowerCase()}`;
-        return <li key={folder} role="treeitem" aria-expanded={children.length ? isOpen : undefined} aria-selected="true" className="folder-tree-parent">
-          <div className="folder-tree-row">
-            {children.length ? <button type="button" className={`folder-tree-chevron ${isOpen ? "open" : ""}`} aria-label={`${isOpen ? "Collapse" : "Expand"} ${folder}`} aria-controls={groupId} onClick={() => toggleCollapsed(folder)} disabled={!!q}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" d="m7 4 6 6-6 6" /></svg></button> : <span className="folder-tree-chevron-spacer" aria-hidden="true" />}
-            <span className="folder-tree-icon"><FolderIcon open={isOpen} /></span>
-            <span className="folder-tree-name">{highlight(folder)}</span>
-            {children.length > 0 && <span className="folder-tree-count">{children.length} sub-folder{children.length === 1 ? "" : "s"}</span>}
-            <button type="button" className="folder-tree-remove" aria-label={`Remove ${folder}`} onClick={() => onRemove(folder)}>×</button>
-          </div>
-          {isOpen && <ul role="group" id={groupId}>
-            {visibleChildren.map((child) => <li key={child} role="treeitem" className="folder-tree-child">
-              <div className="folder-tree-row">
-                <span className="folder-tree-icon sub"><FolderIcon /></span>
-                <span className="folder-tree-name">{highlight(child)}</span>
-              </div>
-            </li>)}
-          </ul>}
-        </li>;
-      })}
-    </ul> : <div className="folder-empty"><strong>No matches</strong><span>No folder or sub-folder matches “{query}”.</span></div>}
+    {q ? (matches.length ? <div className="ftree-results">
+      <p className="ftree-results-count" role="status">{plural(matches.length, "match", "matches")}</p>
+      <ul>{matches.map((match) => <li key={match.path}><button type="button" onClick={() => reveal(match)}>
+        <span className="ftree-icon"><FolderIcon /></span>
+        <span className="ftree-result-text"><strong>{highlight(match.name)}</strong>{match.ancestors.length > 0 && <small>{match.ancestors.join(" › ")}</small>}</span>
+        <span className="ftree-result-go" aria-hidden="true">Show in tree</span>
+      </button></li>)}</ul>
+    </div> : <div className="folder-empty"><strong>No matches</strong><span>No folder or sub-folder matches “{query}”.</span></div>)
+    : <ul className="ftree" role="tree" aria-label="Selected folders">
+      {folders.map((folder) => <FolderTreeNode key={folder} name={folder} nodes={SUBFOLDERS[folder] ?? []} path={folder} depth={0} ctx={ctx} />)}
+    </ul>}
   </div>;
 }
 
@@ -995,7 +1061,7 @@ export default function Home() {
               <div className="summary-title"><h2 id="summary-title">Rule summary</h2><button type="button" onClick={() => setSummaryOpen((open) => !open)} aria-expanded={summaryOpen} aria-controls="rule-summary-content" aria-label={`${summaryOpen ? "Collapse" : "Expand"} rule summary`}>{summaryOpen ? "−" : "+"}</button></div>
               {summaryOpen && <dl id="rule-summary-content">
                 <div><dt>When</dt><dd>{draft.delay} {draft.delayUnit} after {eventLabel}</dd></div>
-                <div><dt>Folders</dt><dd>{draft.folders.length ? <>{draft.folders.slice(0, SUMMARY_FOLDER_LIMIT).map((folder) => { const subCount = SUBFOLDERS[folder]?.length ?? 0; return <span className="chip folder" key={folder}>{folder}{subCount > 0 && <span className="chip-sub" title={`${subCount} sub-folders`}>↳ {subCount}</span>}</span>; })}{draft.folders.length > SUMMARY_FOLDER_LIMIT && <button type="button" className="selection-count-chip folder-more" aria-haspopup="dialog" aria-label={`Show all ${draft.folders.length} selected folders`} onClick={() => setDialog("folders")}>+{draft.folders.length - SUMMARY_FOLDER_LIMIT}</button>}{draft.folders.some((folder) => SUBFOLDERS[folder]) && <button type="button" className="folder-tree-link" onClick={() => setDialog("folders")}>View folder tree</button>}</> : "No folders selected"}{draft.includeSubfolders && <span className="muted"> + subfolders</span>}</dd></div>
+                <div><dt>Folders</dt><dd>{draft.folders.length ? <>{draft.folders.slice(0, SUMMARY_FOLDER_LIMIT).map((folder) => { const subCount = subfolderCount(folder); return <span className="chip folder" key={folder}>{folder}{subCount > 0 && <span className="chip-sub" title={`${subCount} sub-folders`}>↳ {subCount}</span>}</span>; })}{draft.folders.length > SUMMARY_FOLDER_LIMIT && <button type="button" className="selection-count-chip folder-more" aria-haspopup="dialog" aria-label={`Show all ${draft.folders.length} selected folders`} onClick={() => setDialog("folders")}>+{draft.folders.length - SUMMARY_FOLDER_LIMIT}</button>}{draft.folders.some((folder) => SUBFOLDERS[folder]) && <button type="button" className="folder-tree-link" onClick={() => setDialog("folders")}>View folder tree</button>}</> : "No folders selected"}{draft.includeSubfolders && <span className="muted"> + subfolders</span>}</dd></div>
                 <div><dt className="summary-section-heading"><span>If {draft.matchMode} match</span><small>{orderedSummaryConditions.length} configured</small></dt><dd className="summary-condition-list"><div className="summary-condition-groups" id="summary-condition-groups">{visibleSummaryConditions.map((condition) => <SummaryConditionGroup condition={condition} key={condition.id} />)}</div>{orderedSummaryConditions.length > 3 && <button className="summary-condition-toggle" type="button" aria-expanded={summaryConditionsExpanded} aria-controls="summary-condition-groups" onClick={() => setSummaryConditionsExpanded((expanded) => !expanded)}>{summaryConditionsExpanded ? "Show fewer conditions" : `Show ${orderedSummaryConditions.length - 3} more conditions`} <span aria-hidden="true">{summaryConditionsExpanded ? "↑" : "↓"}</span></button>}</dd></div>
                 <div><dt>Then</dt><dd>{draft.actions.map((action) => <span className="chip action" key={action.id}>{actionTitle(action)}</span>)}</dd></div>
                 <div><dt>Trigger limit</dt><dd>{draft.frequency === "once-per-ticket" ? "Once per ticket" : draft.frequency === "once-per-cycle" ? "Once per resolution cycle" : "Every time conditions match"}</dd></div>
