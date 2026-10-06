@@ -78,7 +78,7 @@ type TicketFieldConfig = {
   maxSelections?: number;
 };
 
-type DialogName = "action" | "test" | "discard" | "save" | null;
+type DialogName = "action" | "test" | "discard" | "save" | null | "folders";
 
 const NAVIGATION = [
   ["Dashboard", "▦"], ["Lead", "⌁"], ["Orders", "◫"], ["Customers", "♟"],
@@ -135,6 +135,81 @@ const FOLDER_OPTIONS = [
   { group: "Customer support", items: ["General Support", "Billing", "Returns", "Escalations"] },
   { group: "Regional teams", items: ["India", "Middle East", "South-East Asia"] },
 ];
+
+const SUBFOLDERS: Record<string, string[]> = {
+  "Whats app": ["Orders", "Refunds", "Delivery issues"],
+  "Call": ["Inbound", "Outbound", "Missed calls"],
+  "Complaints": ["Escalated", "Billing disputes"],
+  "Chat": ["Pre-sales", "Support"],
+  "Billing": ["Invoices", "Refund requests", "Payment failures"],
+  "India": ["North", "South", "West", "East"],
+};
+const SUMMARY_FOLDER_LIMIT = 3;
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+const folderScopeSummary = (folders: string[]) => {
+  const subfolders = folders.reduce((total, folder) => total + (SUBFOLDERS[folder]?.length ?? 0), 0);
+  return subfolders ? `${plural(folders.length, "folder")} · ${plural(subfolders, "sub-folder")}` : plural(folders.length, "folder");
+};
+
+const FolderIcon = ({ open = false }: { open?: boolean }) => <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path fill="currentColor" d={open ? "M2 5.5A1.5 1.5 0 0 1 3.5 4h4l1.6 1.6H16A1.5 1.5 0 0 1 17.5 7v1H6.2a1.5 1.5 0 0 0-1.4 1L2.6 15.2A1.5 1.5 0 0 1 2 14V5.5Zm2.9 4.2A1 1 0 0 1 5.8 9h12.4a.8.8 0 0 1 .8 1l-1.8 5.3a1 1 0 0 1-1 .7H3.6a.6.6 0 0 1-.6-.8l1.9-5.5Z" : "M2 5.5A1.5 1.5 0 0 1 3.5 4h4l1.6 1.6H16.5A1.5 1.5 0 0 1 18 7.1v7.4a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 2 14.5v-9Z"} /></svg>;
+
+function FolderTree({ folders, onRemove }: {
+  folders: string[];
+  onRemove: (folder: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const q = query.trim().toLowerCase();
+  const rows = folders.map((folder) => {
+    const children = SUBFOLDERS[folder] ?? [];
+    const parentMatch = !q || folder.toLowerCase().includes(q);
+    const matchedChildren = parentMatch ? children : children.filter((child) => child.toLowerCase().includes(q));
+    return { folder, children, visibleChildren: matchedChildren, visible: parentMatch || matchedChildren.length > 0 };
+  }).filter((row) => row.visible);
+  const expandable = folders.filter((folder) => SUBFOLDERS[folder]?.length);
+  const allCollapsed = expandable.length > 0 && expandable.every((folder) => collapsed.has(folder));
+  const toggleCollapsed = (folder: string) => setCollapsed((current) => {
+    const next = new Set(current);
+    if (next.has(folder)) next.delete(folder); else next.add(folder);
+    return next;
+  });
+  const highlight = (text: string) => {
+    if (!q) return text;
+    const index = text.toLowerCase().indexOf(q);
+    if (index < 0) return text;
+    return <>{text.slice(0, index)}<mark>{text.slice(index, index + q.length)}</mark>{text.slice(index + q.length)}</>;
+  };
+
+  return <div className="folder-tree-panel">
+    <div className="folder-tree-toolbar">
+      <label className="folder-tree-search"><span className="sr-only">Search folders and sub-folders</span><svg viewBox="0 0 20 20" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="m14 14 4 4M8.5 15a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13Z" /></svg><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search folders and sub-folders" />{query && <button type="button" aria-label="Clear search" onClick={() => setQuery("")}>×</button>}</label>
+      {expandable.length > 0 && !q && <button type="button" className="folder-tree-expand" onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(expandable))}>{allCollapsed ? "Expand all" : "Collapse all"}</button>}
+    </div>
+    {rows.length ? <ul className="folder-tree" role="tree" aria-label="Selected folders">
+      {rows.map(({ folder, children, visibleChildren }) => {
+        const isOpen = !!visibleChildren.length && (q ? true : !collapsed.has(folder));
+        const groupId = `tree-group-${folder.replace(/\W+/g, "-").toLowerCase()}`;
+        return <li key={folder} role="treeitem" aria-expanded={children.length ? isOpen : undefined} aria-selected="true" className="folder-tree-parent">
+          <div className="folder-tree-row">
+            {children.length ? <button type="button" className={`folder-tree-chevron ${isOpen ? "open" : ""}`} aria-label={`${isOpen ? "Collapse" : "Expand"} ${folder}`} aria-controls={groupId} onClick={() => toggleCollapsed(folder)} disabled={!!q}><svg viewBox="0 0 20 20" width="12" height="12" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" d="m7 4 6 6-6 6" /></svg></button> : <span className="folder-tree-chevron-spacer" aria-hidden="true" />}
+            <span className="folder-tree-icon"><FolderIcon open={isOpen} /></span>
+            <span className="folder-tree-name">{highlight(folder)}</span>
+            {children.length > 0 && <span className="folder-tree-count">{children.length} sub-folder{children.length === 1 ? "" : "s"}</span>}
+            <button type="button" className="folder-tree-remove" aria-label={`Remove ${folder}`} onClick={() => onRemove(folder)}>×</button>
+          </div>
+          {isOpen && <ul role="group" id={groupId}>
+            {visibleChildren.map((child) => <li key={child} role="treeitem" className="folder-tree-child">
+              <div className="folder-tree-row">
+                <span className="folder-tree-icon sub"><FolderIcon /></span>
+                <span className="folder-tree-name">{highlight(child)}</span>
+              </div>
+            </li>)}
+          </ul>}
+        </li>;
+      })}
+    </ul> : <div className="folder-empty"><strong>No matches</strong><span>No folder or sub-folder matches “{query}”.</span></div>}
+  </div>;
+}
 
 const TEMPLATE_OPTIONS: Record<ActionKind, string[]> = {
   email: ["Resolution follow-up #7259", "Assignee escalation", "Creator follow-up", "Manager escalation"],
@@ -246,6 +321,34 @@ function actionDescription(action: RuleAction) {
   return action.kind === "ticket" ? action.template : `Template: ${action.template}`;
 }
 
+// Chip geometry mirrors .selected-value-chip / .selection-count-chip in globals.css.
+const CHIP_CHROME = 36; // left padding + gap + remove button + right padding
+const CHIP_MAX = 150;
+const CHIP_GAP = 6;
+const COUNT_CHIP = 40;
+const INPUT_MIN = 24;
+let chipMeasureContext: CanvasRenderingContext2D | null = null;
+function chipWidth(label: string) {
+  chipMeasureContext ??= document.createElement("canvas").getContext("2d");
+  if (!chipMeasureContext) return CHIP_MAX;
+  chipMeasureContext.font = "600 13px Arial, Helvetica, sans-serif";
+  return Math.min(CHIP_MAX, Math.ceil(chipMeasureContext.measureText(label).width) + CHIP_CHROME);
+}
+/** How many selected chips fit on one line, leaving room for the "+N" chip and the search input. */
+function fitChipCount(selected: string[], budget: number) {
+  if (!budget || !selected.length) return Math.min(selected.length, 2);
+  let used = INPUT_MIN;
+  let count = 0;
+  for (const label of selected) {
+    const remainingAfter = selected.length - count - 1;
+    const next = chipWidth(label) + CHIP_GAP + (remainingAfter ? COUNT_CHIP + CHIP_GAP : 0);
+    if (used + next > budget) break;
+    used += chipWidth(label) + CHIP_GAP;
+    count += 1;
+  }
+  return Math.max(1, count);
+}
+
 function SubStatusMultiSelect({ id, options, selected, maxSelections, onToggle, onClear }: {
   id: string;
   options: string[];
@@ -264,7 +367,20 @@ function SubStatusMultiSelect({ id, options, selected, maxSelections, onToggle, 
   const [activeIndex, setActiveIndex] = useState(-1);
   const [announcement, setAnnouncement] = useState("");
   const filteredOptions = useMemo(() => options.filter((option) => option.toLowerCase().includes(query.trim().toLowerCase())), [options, query]);
-  const visibleSelections = selected.slice(0, 2);
+  const controlRef = useRef<HTMLDivElement>(null);
+  const [chipBudget, setChipBudget] = useState(0);
+  useEffect(() => {
+    const control = controlRef.current;
+    if (!control) return;
+    const observer = new ResizeObserver(() => {
+      const style = getComputedStyle(control);
+      setChipBudget(control.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
+    });
+    observer.observe(control);
+    return () => observer.disconnect();
+  }, []);
+  const visibleCount = useMemo(() => fitChipCount(selected, chipBudget), [selected, chipBudget]);
+  const visibleSelections = selected.slice(0, visibleCount);
   const hiddenSelectionCount = Math.max(0, selected.length - visibleSelections.length);
   const atLimit = selected.length >= maxSelections;
 
@@ -346,9 +462,9 @@ function SubStatusMultiSelect({ id, options, selected, maxSelections, onToggle, 
 
   return (
     <div className={`tagged-select multi-select ${open ? "open" : ""}`} ref={rootRef}>
-      <div className="tagged-select-control">
-        {visibleSelections.map((selection) => <span className="selected-value-chip" key={selection}><span className="selected-value-chip-label">{selection}</span><button type="button" aria-label={`Remove ${selection} from Sub-Status`} onClick={() => toggleOption(selection)}>×</button></span>)}
-        {hiddenSelectionCount > 0 && <button className="selection-count-chip" type="button" aria-label={`Show ${hiddenSelectionCount} more selected sub-statuses`} onClick={openListbox}>+{hiddenSelectionCount} more</button>}
+      <div className="tagged-select-control" ref={controlRef}>
+        {visibleSelections.map((selection) => <span className="selected-value-chip" key={selection} title={selection}><span className="selected-value-chip-label">{selection}</span><button type="button" aria-label={`Remove ${selection} from Sub-Status`} onClick={() => toggleOption(selection)}>×</button></span>)}
+        {hiddenSelectionCount > 0 && <button className="selection-count-chip" type="button" aria-label={`Show ${hiddenSelectionCount} more selected sub-statuses`} onClick={openListbox}>+{hiddenSelectionCount}</button>}
         <input
           id={id}
           ref={inputRef}
@@ -879,7 +995,7 @@ export default function Home() {
               <div className="summary-title"><h2 id="summary-title">Rule summary</h2><button type="button" onClick={() => setSummaryOpen((open) => !open)} aria-expanded={summaryOpen} aria-controls="rule-summary-content" aria-label={`${summaryOpen ? "Collapse" : "Expand"} rule summary`}>{summaryOpen ? "−" : "+"}</button></div>
               {summaryOpen && <dl id="rule-summary-content">
                 <div><dt>When</dt><dd>{draft.delay} {draft.delayUnit} after {eventLabel}</dd></div>
-                <div><dt>Folders</dt><dd>{draft.folders.length ? draft.folders.map((folder) => <span className="chip folder" key={folder}>{folder}</span>) : "No folders selected"}{draft.includeSubfolders && <span className="muted"> + subfolders</span>}</dd></div>
+                <div><dt>Folders</dt><dd>{draft.folders.length ? <>{draft.folders.slice(0, SUMMARY_FOLDER_LIMIT).map((folder) => { const subCount = SUBFOLDERS[folder]?.length ?? 0; return <span className="chip folder" key={folder}>{folder}{subCount > 0 && <span className="chip-sub" title={`${subCount} sub-folders`}>↳ {subCount}</span>}</span>; })}{draft.folders.length > SUMMARY_FOLDER_LIMIT && <button type="button" className="selection-count-chip folder-more" aria-haspopup="dialog" aria-label={`Show all ${draft.folders.length} selected folders`} onClick={() => setDialog("folders")}>+{draft.folders.length - SUMMARY_FOLDER_LIMIT}</button>}{draft.folders.some((folder) => SUBFOLDERS[folder]) && <button type="button" className="folder-tree-link" onClick={() => setDialog("folders")}>View folder tree</button>}</> : "No folders selected"}{draft.includeSubfolders && <span className="muted"> + subfolders</span>}</dd></div>
                 <div><dt className="summary-section-heading"><span>If {draft.matchMode} match</span><small>{orderedSummaryConditions.length} configured</small></dt><dd className="summary-condition-list"><div className="summary-condition-groups" id="summary-condition-groups">{visibleSummaryConditions.map((condition) => <SummaryConditionGroup condition={condition} key={condition.id} />)}</div>{orderedSummaryConditions.length > 3 && <button className="summary-condition-toggle" type="button" aria-expanded={summaryConditionsExpanded} aria-controls="summary-condition-groups" onClick={() => setSummaryConditionsExpanded((expanded) => !expanded)}>{summaryConditionsExpanded ? "Show fewer conditions" : `Show ${orderedSummaryConditions.length - 3} more conditions`} <span aria-hidden="true">{summaryConditionsExpanded ? "↑" : "↓"}</span></button>}</dd></div>
                 <div><dt>Then</dt><dd>{draft.actions.map((action) => <span className="chip action" key={action.id}>{actionTitle(action)}</span>)}</dd></div>
                 <div><dt>Trigger limit</dt><dd>{draft.frequency === "once-per-ticket" ? "Once per ticket" : draft.frequency === "once-per-cycle" ? "Once per resolution cycle" : "Every time conditions match"}</dd></div>
@@ -990,6 +1106,7 @@ export default function Home() {
       {toast && <div className="toast" role="status"><span>{toast}</span>{undoAvailable && <button type="button" onClick={() => undoRef.current?.()}>Undo</button>}<button type="button" aria-label="Dismiss notification" onClick={() => { undoRef.current = null; setUndoAvailable(false); setToast(null); }}>×</button></div>}
 
       {dialog === "action" && editingAction && <Modal title={draft.actions.some((action) => action.id === editingAction.id) ? "Edit action" : "Add action"} description="Configure one clear outcome for matched tickets." onClose={() => { setDialog(null); setEditingAction(null); }}><ActionEditor initial={editingAction} onCancel={() => { setDialog(null); setEditingAction(null); }} onSave={saveAction} /></Modal>}
+      {dialog === "folders" && <Modal title="Folder scope" description={folderScopeSummary(draft.folders)} onClose={() => setDialog(null)}><div className="modal-body folder-tree-body"><FolderTree folders={draft.folders} onRemove={(folder) => { toggleFolder(folder); if (draft.folders.length <= 1) setDialog(null); }} /></div><div className="modal-actions"><button type="button" className="primary-button" onClick={() => setDialog(null)}>Done</button></div></Modal>}
       {dialog === "test" && <Modal title="Test this rule" description="See how the current draft evaluates a sample ticket." onClose={() => setDialog(null)} wide><TestRule draft={draft} onClose={() => setDialog(null)} onComplete={() => setLastTestFingerprint(fingerprint)} /></Modal>}
       {dialog === "discard" && <Modal title="Discard unsaved changes?" description="This will return the prototype to the last saved version." onClose={() => setDialog(null)}><div className="modal-body"><div className="confirm-illustration danger">!</div><p className="confirm-copy">Your edits to the trigger, conditions, and actions will be lost.</p></div><div className="modal-actions"><button type="button" className="ghost-button" onClick={() => setDialog(null)}>Keep editing</button><button type="button" className="danger-button" onClick={discardChanges}>Discard changes</button></div></Modal>}
       {dialog === "save" && <Modal title="Save changes to this active rule?" description="The updated configuration will be used for new matching events." onClose={() => setDialog(null)}><div className="modal-body"><div className="save-summary"><div><span>Trigger</span><strong>{draft.delay} {draft.delayUnit} after {eventLabel}</strong></div><div><span>Conditions</span><strong>{draft.conditions.length} configured</strong></div><div><span>Actions</span><strong>{draft.actions.length} configured</strong></div></div><label className="confirm-check"><input type="checkbox" defaultChecked /><span>I understand that these changes take effect immediately.</span></label></div><div className="modal-actions"><button type="button" className="ghost-button" onClick={() => setDialog(null)}>Cancel</button><button type="button" className="primary-button" onClick={saveChanges}>Save changes</button></div></Modal>}
